@@ -1,4 +1,6 @@
-from dataclasses import dataclass
+from collections import defaultdict
+from dataclasses import dataclass, field
+from typing import DefaultDict
 
 
 @dataclass
@@ -17,3 +19,41 @@ class Portfolio:
     sk_hynix: int = 0
 
     capital: int = 100_000_000
+
+
+@dataclass
+class PortfolioHistory:
+    celltrion: DefaultDict[int, int] = field(default_factory=lambda: defaultdict(int))
+    hyundai_motors: DefaultDict[int, int] = field(
+        default_factory=lambda: defaultdict(int)
+    )
+    kakao: DefaultDict[int, int] = field(default_factory=lambda: defaultdict(int))
+    kospi: DefaultDict[int, int] = field(default_factory=lambda: defaultdict(int))
+    lg_chem: DefaultDict[int, int] = field(default_factory=lambda: defaultdict(int))
+    lg_hnh: DefaultDict[int, int] = field(default_factory=lambda: defaultdict(int))
+    naver: DefaultDict[int, int] = field(default_factory=lambda: defaultdict(int))
+    samsung_bio: DefaultDict[int, int] = field(default_factory=lambda: defaultdict(int))
+    samsung_elec: DefaultDict[int, int] = field(
+        default_factory=lambda: defaultdict(int)
+    )
+    samsung_elec2: DefaultDict[int, int] = field(
+        default_factory=lambda: defaultdict(int)
+    )
+    samsung_sdi: DefaultDict[int, int] = field(default_factory=lambda: defaultdict(int))
+    sk_hynix: DefaultDict[int, int] = field(default_factory=lambda: defaultdict(int))
+
+
+@dataclass
+class OpenPriceBook:
+    celltrion: int
+    hyundai_motors: int
+    kakao: int
+    kospi: int
+    lg_chem: int
+    lg_hnh: int
+    naver: int
+    samsung_bio: int
+    samsung_elec: int
+    samsung_elec2: int
+    samsung_sdi: int
+    sk_hynix: int
