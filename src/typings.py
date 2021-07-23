@@ -1,6 +1,11 @@
-from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import DefaultDict
+from typing import List, Sequence, Union
+
+Scalar = Union[int, float]
+
+Reward = Scalar
+
+State = Sequence[Union[int, float]]
 
 
 @dataclass
@@ -18,42 +23,61 @@ class Portfolio:
     samsung_sdi: int = 0
     sk_hynix: int = 0
 
-    capital: int = 100_000_000
+    capital: Scalar = 100_000_000
 
 
 @dataclass
-class PortfolioHistory:
-    celltrion: DefaultDict[int, int] = field(default_factory=lambda: defaultdict(int))
-    hyundai_motors: DefaultDict[int, int] = field(
-        default_factory=lambda: defaultdict(int)
-    )
-    kakao: DefaultDict[int, int] = field(default_factory=lambda: defaultdict(int))
-    kospi: DefaultDict[int, int] = field(default_factory=lambda: defaultdict(int))
-    lg_chem: DefaultDict[int, int] = field(default_factory=lambda: defaultdict(int))
-    lg_hnh: DefaultDict[int, int] = field(default_factory=lambda: defaultdict(int))
-    naver: DefaultDict[int, int] = field(default_factory=lambda: defaultdict(int))
-    samsung_bio: DefaultDict[int, int] = field(default_factory=lambda: defaultdict(int))
-    samsung_elec: DefaultDict[int, int] = field(
-        default_factory=lambda: defaultdict(int)
-    )
-    samsung_elec2: DefaultDict[int, int] = field(
-        default_factory=lambda: defaultdict(int)
-    )
-    samsung_sdi: DefaultDict[int, int] = field(default_factory=lambda: defaultdict(int))
-    sk_hynix: DefaultDict[int, int] = field(default_factory=lambda: defaultdict(int))
+class Order:
+    buy: int = 0
+    sell: int = 0
+
+
+@dataclass
+class Action:
+    celltrion: Order = Order()
+    hyundai_motors: Order = Order()
+    kakao: Order = Order()
+    kospi: Order = Order()
+    lg_chem: Order = Order()
+    lg_hnh: Order = Order()
+    naver: Order = Order()
+    samsung_bio: Order = Order()
+    samsung_elec: Order = Order()
+    samsung_elec2: Order = Order()
+    samsung_sdi: Order = Order()
+    sk_hynix: Order = Order()
+
+
+Price = Scalar
+
+
+@dataclass
+class Inventory:
+    celltrion: List[Price] = field(default_factory=list)
+    hyundai_motors: List[Price] = field(default_factory=list)
+    kakao: List[Price] = field(default_factory=list)
+    kospi: List[Price] = field(default_factory=list)
+    lg_chem: List[Price] = field(default_factory=list)
+    lg_hnh: List[Price] = field(default_factory=list)
+    naver: List[Price] = field(default_factory=list)
+    samsung_bio: List[Price] = field(default_factory=list)
+    samsung_elec: List[Price] = field(default_factory=list)
+    samsung_elec2: List[Price] = field(default_factory=list)
+    samsung_sdi: List[Price] = field(default_factory=list)
+    sk_hynix: List[Price] = field(default_factory=list)
 
 
 @dataclass
 class OpenPriceBook:
-    celltrion: int
-    hyundai_motors: int
-    kakao: int
-    kospi: int
-    lg_chem: int
-    lg_hnh: int
-    naver: int
-    samsung_bio: int
-    samsung_elec: int
-    samsung_elec2: int
-    samsung_sdi: int
-    sk_hynix: int
+    celltrion: Price
+    hyundai_motors: Price
+    kakao: Price
+    kospi: Price
+    lg_chem: Price
+    lg_hnh: Price
+    naver: Price
+    samsung_bio: Price
+    samsung_elec: Price
+    samsung_elec2: Price
+    samsung_sdi: Price
+    sk_hynix: Price
