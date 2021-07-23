@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
-from typing import Sequence
+from datetime import datetime
 
+from environment.env import Environment
 from pyspark.sql.dataframe import DataFrame
 from typings import Action, Numeric, Portfolio, Scalar, State
 
@@ -10,11 +11,18 @@ class Agent(ABC):
         self.portfolio = Portfolio()
         self.rewards = []
 
-    def observation2state(self, observation: DataFrame) -> State:
-        pass
+    @abstractmethod
+    def observe(self, environment: Environment, timestep: datetime.date) -> DataFrame:
+        raise NotImplementedError
 
     @abstractmethod
-    def policy(self, state: Sequence[Numeric], **kwargs) -> Action:
+    def observation2state(
+        self, observation: DataFrame, timestep: datetime.date
+    ) -> State:
+        raise NotImplementedError
+
+    @abstractmethod
+    def policy(self, state: State, **kwargs) -> Action:
         raise NotImplementedError
 
     def rewarded(self, reward: Numeric):
