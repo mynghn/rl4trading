@@ -144,83 +144,26 @@ class DiversifiedInvestor(Agent):
 
 
 class KOSPIFollower(Agent):
-    def __init__(self, percentage_bound: int = 10):
-        super().__init__()
-        self.percentage_bound = percentage_bound
-        self.portfolio_history = PortfolioHistory()
-
-    def sell(self, quantity: int, bought_price: int, selling_price: int):
+    def sell(self, quantity: int, price: int):
         assert self.portfolio.kospi >= quantity
 
         # portfolio
         self.portfolio.kospi -= quantity
-        self.portfolio.capital += quantity * selling_price
-        # history
-        self.portfolio_history.kospi[bought_price] -= quantity
+        self.portfolio.capital += quantity * price
 
-    def buy(self, quantity: int, buying_price: int):
-        assert self.portfolio.capital >= quantity * buying_price
+    def buy(self, quantity: int, price: int):
+        assert self.portfolio.capital >= quantity * price
 
         # portfolio
-        self.portfolio.capital -= quantity * buying_price
+        self.portfolio.capital -= quantity * price
         self.portfolio.kospi += quantity
-        # history
-        self.portfolio_history.kospi[buying_price] += quantity
-
-    def search_most_profitable_kospi_in_hand(self, open_price: int) -> int:
-        max_unit_profit = -100_000_000
-        bought_price = -1
-        buying_history = self.portfolio_history.kospi
-        for _bought_price in buying_history.keys():
-            unit_profit = open_price - _bought_price
-            if unit_profit > max_unit_profit:
-                max_unit_profit = unit_profit
-                bought_price = _bought_price
-
-        return bought_price
 
     def action(self, kospi_open_price: int) -> int:
-        # 1. Sell
-        buying_history = self.portfolio_history.kospi
-        for bought_price in buying_history.keys():
-            stop_loss = kospi_open_price < bought_price * (
-                1 - self.percentage_bound / 100
-            )
-            confirm_profit = kospi_open_price > bought_price * (
-                1 + self.percentage_bound / 100
-            )
-            if stop_loss or confirm_profit:
-                self.sell(
-                    quantity=buying_history[bought_price],
-                    bought_price=bought_price,
-                    selling_price=kospi_open_price,
-                )
-        # 2. Buy
-        subtotal = 0
-        buying_quantity = 0
-        while subtotal < 10_000_000:
-            buying_quantity += 1
-            subtotal += kospi_open_price
+        # 풀매도
+        self.sell(quantity=self.portfolio.kospi, price=kospi_open_price)
 
-        if self.portfolio.capital >= subtotal:
-            self.buy(quantity=buying_quantity, buying_price=kospi_open_price)
-        else:
-            portfolio_value = (
-                self.portfolio.capital + kospi_open_price * self.portfolio.kospi
-            )
-
-            assert portfolio_value >= subtotal
-
-            while self.portfolio.capital < subtotal:
-
-                bought_price = self.search_most_profitable_kospi_in_hand(
-                    open_prices=kospi_open_price
-                )
-
-                self.sell(
-                    quantity=1,
-                    bought_price=bought_price,
-                    selling_price=kospi_open_price,
-                )
-
-            self.buy(quantity=buying_quantity, buying_price=kospi_open_price)
+        # 다시 풀매수
+        self.buy(
+            quantity=int(self.portfolio.capital / kospi_open_price),
+            price=kospi_open_price,
+        )
