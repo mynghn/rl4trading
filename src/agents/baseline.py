@@ -7,7 +7,7 @@ from typings import OpenPriceBook, PortfolioHistory
 from agents.agent import Agent
 
 
-class DiversifiedInvestor(Agent):
+class DiversifyingRandomInvestor(Agent):
     def __init__(self, percentage_bound: int = 10):
         super().__init__()
         self.percentage_bound = percentage_bound
