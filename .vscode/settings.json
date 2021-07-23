@@ -4,7 +4,8 @@
     "python.linting.enabled": true,
     "python.linting.flake8Args": [
         "--max-line-length=120",
-        "--ignore=E203"
+        "--ignore=E203",
+        "--ignore=W503"
     ],
     "python.sortImports.args": ["--atomic"],
     "python.sortImports.path": "isort",
