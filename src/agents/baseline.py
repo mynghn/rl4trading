@@ -1,15 +1,24 @@
 import copy
+import datetime
 from collections import defaultdict
 from typing import DefaultDict, Tuple
 
 import numpy as np
-from typings import Action, Inventory, OpenPriceBook, Order, Scalar
-
-from agents.agent import Agent
+from custom_typings import STOCK_LIST, Action, Inventory, OpenPriceBook, Order, Price
+from environment.market import StockMarket
+from interface import Agent
+from pyspark.sql import DataFrame
 
 
 class KOSPIFollower(Agent):
-    def policy(self, kospi_open_price: Scalar) -> Action:
+    def observe(self, env: StockMarket, timestep: datetime.date) -> DataFrame:
+        return env.observed(stocks=["kospi"], start=timestep, end=timestep)
+
+    def observation2state(self, observation: DataFrame) -> Price:
+        return observation.first().Open
+
+    def policy(self, state: Price) -> Action:
+        kospi_open_price = state
         portfolio_value = (
             self.portfolio.capital + self.portfolio.kospi * kospi_open_price
         )
@@ -27,6 +36,17 @@ class DiversifyingRandomInvestor(Agent):
         super().__init__()
         self.percentage_bound = percentage_bound
         self.inventory = Inventory()
+
+    def observe(self, env: StockMarket, timestep: datetime.date) -> DataFrame:
+        return env.observed(stocks=STOCK_LIST, start=timestep, end=timestep)
+
+    def observation2state(self, observation: DataFrame) -> OpenPriceBook:
+        return OpenPriceBook(
+            **{
+                row.Stock: row.Open
+                for row in observation.select("Stock", "Open").collect()
+            }
+        )
 
     def random_pick(
         self, open_prices: OpenPriceBook
@@ -69,7 +89,8 @@ class DiversifyingRandomInvestor(Agent):
 
         return most_unit_profitable_stock
 
-    def policy(self, open_prices: OpenPriceBook) -> int:
+    def policy(self, state: OpenPriceBook) -> int:
+        open_prices = state
         stocks = [attr for attr in dir(self.portfolio) if not attr.startswith("_")]
         action = Action()
 
