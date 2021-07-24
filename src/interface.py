@@ -1,9 +1,11 @@
-from abc import ABC, abstractmethod
-from datetime import datetime
+from __future__ import annotations
 
-from environment.env import Environment
-from pyspark.sql.dataframe import DataFrame
-from typings import Action, Numeric, Portfolio, Scalar, State
+import datetime
+from abc import ABC, abstractmethod
+
+from pyspark.sql import DataFrame
+
+from custom_typings import Action, Portfolio, Scalar, State
 
 
 class Agent(ABC):
@@ -12,26 +14,24 @@ class Agent(ABC):
         self.rewards = []
 
     @abstractmethod
-    def observe(self, environment: Environment, timestep: datetime.date) -> DataFrame:
+    def observe(self, env: Environment, timestep: datetime.date) -> DataFrame:
         raise NotImplementedError
 
     @abstractmethod
-    def observation2state(
-        self, observation: DataFrame, timestep: datetime.date
-    ) -> State:
+    def observation2state(self, observation: DataFrame) -> State:
         raise NotImplementedError
 
     @abstractmethod
     def policy(self, state: State, **kwargs) -> Action:
         raise NotImplementedError
 
-    def rewarded(self, reward: Numeric):
+    def rewarded(self, reward: Scalar):
         self.rewards.append(reward)
 
     def Return(self, discount_factor: Scalar = 1) -> Scalar:
         return sum([r * (discount_factor ** idx) for idx, r in enumerate(self.rewards)])
 
-    def Q(self, state: State, action: Action) -> Numeric:
+    def Q(self, state: State, action: Action) -> Scalar:
         pass
 
     def sell(self, stock: str, quantity: int, price: int):
@@ -46,3 +46,19 @@ class Agent(ABC):
 
         self.portfolio.capital -= quantity * price
         setattr(self.portfolio, stock, getattr(self.portfolio, stock) + quantity)
+
+
+class Environment(ABC):
+    @abstractmethod
+    def observed(self, start: datetime.date, end: datetime.date, **kwargs) -> DataFrame:
+        raise NotImplementedError
+
+    @abstractmethod
+    def interact(self, action: Action, timestep: datetime.date, **kwargs) -> Scalar:
+        raise NotImplementedError
+
+    @abstractmethod
+    def episode(
+        self, agent: Agent, start: datetime.date, end: datetime.date, **kwargs
+    ) -> Scalar:
+        raise NotImplementedError
