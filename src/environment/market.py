@@ -63,10 +63,10 @@ class StockMarket(Environment):
     ) -> DataFrame:
         stock = stocks.pop()
         df = self.datamart[stock].withColumn()
-        unioned = df.withColumn(lit(stock).alias("stock"))
+        unioned = df.withColumn(lit(stock).alias("Stock"))
         for stock in stocks:
             df = self.datamart[stock]
-            unioned = unioned.union(df.withColumn(lit(stock).alias("stock")))
+            unioned = unioned.union(df.withColumn(lit(stock).alias("Stock")))
 
         return (
             unioned.filter(col("Date") >= start.isoformat())
