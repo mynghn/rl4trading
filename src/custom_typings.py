@@ -1,11 +1,41 @@
 from dataclasses import dataclass, field
-from typing import List, Sequence, Union
+from typing import List, Literal, Sequence, Union
 
 Scalar = Union[int, float]
 
-Reward = Scalar
-
 State = Sequence[Union[int, float]]
+
+Reward = Return = Scalar
+
+Stock = Union[
+    Literal["celltrion"],
+    Literal["hyundai_motors"],
+    Literal["kakao"],
+    Literal["kospi"],
+    Literal["lg_chem"],
+    Literal["lg_hnh"],
+    Literal["naver"],
+    Literal["samsung_bio"],
+    Literal["samsung_elec"],
+    Literal["samsung_elec2"],
+    Literal["samsung_sdi"],
+    Literal["sk_hynix"],
+]
+
+STOCK_LIST = (
+    "celltrion",
+    "hyundai_motors",
+    "kakao",
+    "kospi",
+    "lg_chem",
+    "lg_hnh",
+    "naver",
+    "samsung_bio",
+    "samsung_elec",
+    "samsung_elec2",
+    "samsung_sdi",
+    "sk_hynix",
+)
 
 
 @dataclass
