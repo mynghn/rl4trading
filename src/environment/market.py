@@ -2,7 +2,7 @@ import os
 from datetime import datetime
 from typing import Dict, Sequence
 
-from custom_typings import STOCK_LIST, Action, Price, Scalar, Stock
+from custom_typings import STOCK_LIST, Action, Price, Return, Reward, Stock
 from interface import Agent, Environment
 from pyspark.sql import SparkSession
 from pyspark.sql.dataframe import DataFrame
@@ -77,7 +77,7 @@ class StockMarket(Environment):
     def get_open_price(self, stock, date: datetime.date) -> Price:
         return self.datamart[stock].filter(col("Date") == date.isoformat()).first().Open
 
-    def interact(self, action: Action, timestep: datetime.date) -> Scalar:
+    def interact(self, action: Action, timestep: datetime.date) -> Reward:
         reward = 0
         _bought = 0
         for stock in STOCK_LIST:
@@ -98,7 +98,7 @@ class StockMarket(Environment):
         agent: Agent,
         start: datetime.date,
         end: datetime.date,
-    ) -> Scalar:
+    ) -> Return:
         t = start
         while t <= end:
             # 1. Agent: Observe environment
