@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod
 
 from pyspark.sql import DataFrame
 
-from custom_typings import Action, Portfolio, Scalar, State
+from custom_typings import Action, Portfolio, Return, Reward, Scalar, State
 
 
 class Agent(ABC):
@@ -54,11 +54,11 @@ class Environment(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def interact(self, action: Action, timestep: datetime.date, **kwargs) -> Scalar:
+    def interact(self, action: Action, timestep: datetime.date, **kwargs) -> Reward:
         raise NotImplementedError
 
     @abstractmethod
     def episode(
         self, agent: Agent, start: datetime.date, end: datetime.date, **kwargs
-    ) -> Scalar:
+    ) -> Return:
         raise NotImplementedError
