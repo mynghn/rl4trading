@@ -34,6 +34,7 @@ class StockMarket(gym.Env):
         datamart: Dict[Stock, DataFrame],
         start_date: datetime.date,
         end_date: datetime.date,
+        episode_length: int,
     ):
         self.action_space = S.Box(low=-np.inf, high=np.inf, shape=(12,))
         self.observation_space = S.Box(low=0, high=np.inf, shape=(492,))
@@ -52,10 +53,36 @@ class StockMarket(gym.Env):
                 replace=False,
             )
         )
-        self.date = self.start_date + datetime.timedelta(
+        self.episode_start = self.start_date + datetime.timedelta(
             days=self.start_point_list.pop()
         )
-        self.t = 0
+        self.t = 1
+
+        self.T = episode_length
+
+    def get_data(self, stock: Stock, date: datetime.date, column: str) -> float:
+        if self.cache[stock][date].get(column):
+            return self.cache[stock][date][column]
+        else:
+            if "MA" in column and column not in self.datamart[stock].columns:
+                parsed = column.split("_")
+                og_col = parsed[0]
+                ma_type = parsed[1][0]
+                window_size = int(parsed[1][3:])
+
+                self.compute_ma(
+                    stock=stock, column=og_col, window_size=window_size, type=ma_type
+                )
+
+            data = float(
+                self.datamart[stock]
+                .filter(F.col("Date") == date.isoformat())
+                .select(column)
+                .first()
+                .asDict()[column]
+            )
+            self.cache[stock][date][column] = data
+            return data
 
     def compute_ma(
         self,
@@ -87,30 +114,6 @@ class StockMarket(gym.Env):
         else:
             raise ValueError("Cumulative & Exponential MA not implemented yet")
 
-    def get_data(self, stock: Stock, date: datetime.date, column: str) -> float:
-        if self.cache[stock][date].get(column):
-            return self.cache[stock][date][column]
-        else:
-            if "MA" in column and column not in self.datamart[stock].columns:
-                parsed = column.split("_")
-                og_col = parsed[0]
-                ma_type = parsed[1][0]
-                window_size = int(parsed[1][3:])
-
-                self.compute_ma(
-                    stock=stock, column=og_col, window_size=window_size, type=ma_type
-                )
-
-            data = float(
-                self.datamart[stock]
-                .filter(F.col("Date") == date.isoformat())
-                .select(column)
-                .first()
-                .asDict()[column]
-            )
-            self.cache[stock][date][column] = data
-            return data
-
     def get_portfolio_value(self, portfolio: Portfolio, date: datetime.date) -> float:
         value = portfolio["cash"]
         for stock in self.stock_list:
@@ -121,8 +124,9 @@ class StockMarket(gym.Env):
 
         return value
 
-    def emit_observation(self, date: datetime.date) -> np.ndarray[float]:
+    def emit_observation(self, timestep: int) -> np.ndarray[float]:
         obs = []
+        date = self.episode_start + datetime.timedelta(days=timestep - 1)
 
         # 1. (t+1) step's open prices -> 12D
         for stock in self.stock_list:
@@ -193,20 +197,17 @@ class StockMarket(gym.Env):
         return np.array(obs)
 
     def step(
-        self, action: np.ndarray[np.float32], portfolio: Portfolio
-    ) -> Tuple[object, float, bool, Dict]:
-        # 0. Increase timestep
-        self.t += 1
-        self.date += datetime.timedelta(days=1)
-
+        self, action: np.ndarray[float], portfolio: Portfolio
+    ) -> Tuple[np.ndarray[float], float, bool, Dict]:
         sells = [idx for idx in range(len(action)) if action[idx] < 0]
         buys = [idx for idx in range(len(action)) if action[idx] > 0]
         portfolio_before = copy.deepcopy(portfolio)
 
-        # 1. Sell First
+        date = self.episode_start + datetime.timedelta(days=self.t - 1)
+        # Sell First
         for idx in sells:
             stock = self.stock_list[idx]
-            open_price = self.price_book[stock][self.date]
+            open_price = self.get_data(stock=stock, date=date, column="Open")
             to_sell = action[idx]
 
             assert portfolio_before[stock] >= to_sell, "Not enough stock in hand"
@@ -214,10 +215,10 @@ class StockMarket(gym.Env):
             portfolio[stock] -= to_sell
             portfolio["cash"] += open_price * to_sell
 
-        # 2. Then buy
+        # Then buy
         for idx in buys:
             stock = self.stock_list[idx]
-            open_price = self.price_book[stock][self.date]
+            open_price = self.get_data(stock=stock, date=date, column="Open")
             to_buy = action[idx]
 
             assert portfolio["cash"] >= open_price * to_buy, "Not enough cash in hand"
@@ -225,20 +226,31 @@ class StockMarket(gym.Env):
             portfolio["cash"] -= open_price * to_buy
             portfolio[stock] += to_buy
 
+        # Increase timestep
+        self.t += 1
+
+        # reward = portfolio value delta
         reward = self.get_portfolio_value(
-            portfolio=portfolio, date=self.date
+            portfolio=portfolio,
+            date=self.episode_start + datetime.timedelta(days=self.t - 1),
         ) - self.get_portfolio_value(
-            portfolio=portfolio_before, date=self.date - datetime.timedelta(days=1)
+            portfolio=portfolio_before,
+            date=self.episode_start + datetime.timedelta(days=self.t - 2),
         )
 
-        if self.t >= 10:
+        # done
+        if self.t >= self.T:
             done = True
         else:
             done = False
 
-        obs = self.emit_observation(date=self.date + datetime.timedelta(days=1))
+        # observation
+        obs = self.emit_observation(timestep=self.t)
 
-        return obs, reward, done, {}
+        # info
+        info = {}
+
+        return obs, reward, done, info
 
     def reset(self) -> bool:
         if self.start_point_list:
