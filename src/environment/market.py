@@ -1,12 +1,16 @@
 import copy
 import datetime
-from typing import Any, Dict, Tuple
+from collections import defaultdict
+from typing import Dict, Literal, Tuple, Union
 
 import gym
 import numpy as np
-from custom_typings import Portfolio, Price, Stock
+from custom_typings import Portfolio, Stock
 from gym import spaces as S
 from gym.utils import seeding
+from pyspark.sql import DataFrame
+from pyspark.sql import Window as W
+from pyspark.sql import functions as F
 
 
 class StockMarket(gym.Env):
@@ -27,14 +31,15 @@ class StockMarket(gym.Env):
 
     def __init__(
         self,
-        price_book: Dict[Stock, Dict[datetime.date, Price]],
+        datamart: Dict[Stock, DataFrame],
         start_date: datetime.date,
         end_date: datetime.date,
     ):
         self.action_space = S.Box(low=-np.inf, high=np.inf, shape=(12,))
-        self.observation_space = S.Box(low=0, high=np.inf, shape=(552,))
+        self.observation_space = S.Box(low=0, high=np.inf, shape=(492,))
 
-        self.price_book = price_book
+        self.datamart = datamart
+        self.cache = defaultdict(lambda: defaultdict(dict))
 
         self.start_date = start_date
         self.end_date = end_date
@@ -52,18 +57,140 @@ class StockMarket(gym.Env):
         )
         self.t = 0
 
+    def compute_ma(
+        self,
+        stock: Stock,
+        column: str,
+        window_size: int,
+        type: Union[Literal["S"], Literal["C"], Literal["E"]] = "S",
+    ):
+        df = self.datamart[stock]
+
+        if "date_order" not in df.columns:
+            df = df.withColumn(
+                "date_order",
+                F.row_number().over(W.orderBy("Date")),
+            )
+
+        if type == "S":
+            self.datamart[stock] = df.withColumn(
+                f"{column}_SMA{window_size}",
+                F.when(
+                    F.col("date_order") >= window_size,
+                    F.avg(column).over(
+                        W.orderBy("date_order").rowsBetween(
+                            -window_size + 1, W.currentRow
+                        )
+                    ),
+                ).otherwise(F.lit(None)),
+            )
+        else:
+            raise ValueError("Cumulative & Exponential MA not implemented yet")
+
+    def get_data(self, stock: Stock, date: datetime.date, column: str) -> float:
+        if self.cache[stock][date].get(column):
+            return self.cache[stock][date][column]
+        else:
+            if "MA" in column and column not in self.datamart[stock].columns:
+                parsed = column.split("_")
+                og_col = parsed[0]
+                ma_type = parsed[1][0]
+                window_size = int(parsed[1][3:])
+
+                self.compute_ma(
+                    stock=stock, column=og_col, window_size=window_size, type=ma_type
+                )
+
+            data = float(
+                self.datamart[stock]
+                .filter(F.col("Date") == date.isoformat())
+                .select(column)
+                .first()
+                .asDict()[column]
+            )
+            self.cache[stock][date][column] = data
+            return data
+
     def get_portfolio_value(self, portfolio: Portfolio, date: datetime.date) -> float:
         value = portfolio["cash"]
         for stock in self.stock_list:
-            price = self.price_book[stock][date]
+            price = self.get_data(stock=stock, date=date, column="Open")
             q = portfolio[stock]
 
             value += price * q
 
         return value
 
-    def get_observations(self, timestep: int) -> Any:
-        pass
+    def emit_observation(self, date: datetime.date) -> np.ndarray[float]:
+        obs = []
+
+        # 1. (t+1) step's open prices -> 12D
+        for stock in self.stock_list:
+            obs.append(self.get_data(stock=stock, date=date, column="Open"))
+
+        # 2. (t) ~ (t-4) step's open/close/high/low/volume -> 12 * 5 * 5 = 300D
+        for stock in self.stock_list:
+            for i in range(1, 6):
+                obs += [
+                    self.get_data(
+                        stock=stock,
+                        date=date - datetime.timedelta(days=i),
+                        column="Open",
+                    ),
+                    self.get_data(
+                        stock=stock,
+                        date=date - datetime.timedelta(days=i),
+                        column="Close",
+                    ),
+                    self.get_data(
+                        stock=stock,
+                        date=date - datetime.timedelta(days=i),
+                        column="High",
+                    ),
+                    self.get_data(
+                        stock=stock,
+                        date=date - datetime.timedelta(days=i),
+                        column="Low",
+                    ),
+                    self.get_data(
+                        stock=stock,
+                        date=date - datetime.timedelta(days=i),
+                        column="Volume",
+                    ),
+                ]
+
+        # 3. 10/20/60 Day SMA -> 3 * 12 * 5 = 180D
+        for window_size in (10, 20, 60):
+            for stock in self.stock_list:
+                obs += [
+                    self.get_data(
+                        stock=stock,
+                        date=date - datetime.timedelta(days=1),
+                        column=f"Open_SMA{window_size}",
+                    ),
+                    self.get_data(
+                        stock=stock,
+                        date=date - datetime.timedelta(days=1),
+                        column=f"Close_SMA{window_size}",
+                    ),
+                    self.get_data(
+                        stock=stock,
+                        date=date - datetime.timedelta(days=1),
+                        column=f"High_SMA{window_size}",
+                    ),
+                    self.get_data(
+                        stock=stock,
+                        date=date - datetime.timedelta(days=1),
+                        column=f"Low_SMA{window_size}",
+                    ),
+                    self.get_data(
+                        stock=stock,
+                        date=date - datetime.timedelta(days=1),
+                        column=f"Volume_SMA{window_size}",
+                    ),
+                ]
+
+        return np.array(obs)
 
     def step(
         self, action: np.ndarray[np.float32], portfolio: Portfolio
@@ -109,7 +236,7 @@ class StockMarket(gym.Env):
         else:
             done = False
 
-        obs = self.get_observations(timestep=self.t)
+        obs = self.emit_observation(date=self.date + datetime.timedelta(days=1))
 
         return obs, reward, done, {}
 
