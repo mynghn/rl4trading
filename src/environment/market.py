@@ -1,130 +1,129 @@
-import os
-from datetime import datetime
-from typing import Dict, Sequence
+import copy
+import datetime
+from typing import Any, Dict, Tuple
 
-from custom_typings import STOCK_LIST, Action, Price, Return, Reward, Stock
-from interface import Agent, Environment
-from pyspark.sql import SparkSession
-from pyspark.sql.dataframe import DataFrame
-from pyspark.sql.functions import col, lit
+import gym
+import numpy as np
+from custom_typings import Portfolio, Price, Stock
+from gym import spaces as S
+from gym.utils import seeding
 
 
-class StockMarket(Environment):
-    def __init__(self, spark: SparkSession, data_path: str):
-        self.spark = spark
-        self.data_path = data_path
+class StockMarket(gym.Env):
+    stock_list = (
+        "celltrion",
+        "hyundai_motors",
+        "kakao",
+        "kospi",
+        "lg_chem",
+        "lg_hnh",
+        "naver",
+        "samsung_bio",
+        "samsung_elec",
+        "samsung_elec2",
+        "samsung_sdi",
+        "sk_hynix",
+    )
 
-    @property
-    def datamart(self) -> Dict[Stock, DataFrame]:
-        return {
-            "celltrion": self.spark.read.csv(
-                os.path.join(self.data_path, "Celltrion.csv"), header=True
-            ),
-            "hyundai_motors": self.spark.read.csv(
-                os.path.join(self.data_path, "HyundaiMotor.csv"), header=True
-            ),
-            "kakao": self.spark.read.csv(
-                os.path.join(self.data_path, "Kakao.csv"), header=True
-            ),
-            "kospi": self.spark.read.csv(
-                os.path.join(self.data_path, "KOSPI.csv"), header=True
-            ),
-            "lg_chem": self.spark.read.csv(
-                os.path.join(self.data_path, "LGChemical.csv"), header=True
-            ),
-            "lg_hnh": self.spark.read.csv(
-                os.path.join(self.data_path, "LGH&H.csv"), header=True
-            ),
-            "naver": self.spark.read.csv(
-                os.path.join(self.data_path, "NAVER.csv"), header=True
-            ),
-            "samsung_bio": self.spark.read.csv(
-                os.path.join(self.data_path, "SamsungBiologics.csv"), header=True
-            ),
-            "samsung_elec": self.spark.read.csv(
-                os.path.join(self.data_path, "SamsungElectronics.csv"), header=True
-            ),
-            "samsung_elec2": self.spark.read.csv(
-                os.path.join(self.data_path, "SamsungElectronics2.csv"), header=True
-            ),
-            "samsung_sdi": self.spark.read.csv(
-                os.path.join(self.data_path, "SamsungSDI.csv"), header=True
-            ),
-            "sk_hynix": self.spark.read.csv(
-                os.path.join(self.data_path, "SKhynix.csv"), header=True
-            ),
-        }
-
-    def observed(
+    def __init__(
         self,
-        stocks: Sequence[Stock],
-        start: datetime.date,
-        end: datetime.date,
-    ) -> DataFrame:
-        stock = stocks.pop()
-        df = self.datamart[stock].withColumn()
-        unioned = df.withColumn(lit(stock).alias("Stock"))
-        for stock in stocks:
-            df = self.datamart[stock]
-            unioned = unioned.union(df.withColumn(lit(stock).alias("Stock")))
+        price_book: Dict[Stock, Dict[datetime.date, Price]],
+        start_date: datetime.date,
+        end_date: datetime.date,
+    ):
+        self.action_space = S.Box(low=-np.inf, high=np.inf, shape=(12,))
+        self.observation_space = S.Box(low=0, high=np.inf, shape=(552,))
 
-        return (
-            unioned.filter(col("Date") >= start.isoformat())
-            .filter(col("Date") <= end.isoformat())
-            .orderBy("stock", "Date")
+        self.price_book = price_book
+
+        self.start_date = start_date
+        self.end_date = end_date
+
+        self.random_seed = self.seed()
+        self.start_point_list = list(
+            self.np_random.choice(
+                (self.end_date - self.start_date).days + 1,
+                size=(self.end_date - self.start_date).days + 1,
+                replace=False,
+            )
+        )
+        self.date = self.start_date + datetime.timedelta(
+            days=self.start_point_list.pop()
+        )
+        self.t = 0
+
+    def get_portfolio_value(self, portfolio: Portfolio, date: datetime.date) -> float:
+        value = portfolio["cash"]
+        for stock in self.stock_list:
+            price = self.price_book[stock][date]
+            q = portfolio[stock]
+
+            value += price * q
+
+        return value
+
+    def get_observations(self, timestep: int) -> Any:
+        pass
+
+    def step(
+        self, action: np.ndarray[np.float32], portfolio: Portfolio
+    ) -> Tuple[object, float, bool, Dict]:
+        # 0. Increase timestep
+        self.t += 1
+        self.date += datetime.timedelta(days=1)
+
+        sells = [idx for idx in range(len(action)) if action[idx] < 0]
+        buys = [idx for idx in range(len(action)) if action[idx] > 0]
+        portfolio_before = copy.deepcopy(portfolio)
+
+        # 1. Sell First
+        for idx in sells:
+            stock = self.stock_list[idx]
+            open_price = self.price_book[stock][self.date]
+            to_sell = action[idx]
+
+            assert portfolio_before[stock] >= to_sell, "Not enough stock in hand"
+
+            portfolio[stock] -= to_sell
+            portfolio["cash"] += open_price * to_sell
+
+        # 2. Then buy
+        for idx in buys:
+            stock = self.stock_list[idx]
+            open_price = self.price_book[stock][self.date]
+            to_buy = action[idx]
+
+            assert portfolio["cash"] >= open_price * to_buy, "Not enough cash in hand"
+
+            portfolio["cash"] -= open_price * to_buy
+            portfolio[stock] += to_buy
+
+        reward = self.get_portfolio_value(
+            portfolio=portfolio, date=self.date
+        ) - self.get_portfolio_value(
+            portfolio=portfolio_before, date=self.date - datetime.timedelta(days=1)
         )
 
-    def get_open_price(self, stock, date: datetime.date) -> Price:
-        return self.datamart[stock].filter(col("Date") == date.isoformat()).first().Open
+        if self.t >= 10:
+            done = True
+        else:
+            done = False
 
-    def interact(self, action: Action, timestep: datetime.date) -> Reward:
-        reward = 0
-        _bought = 0
-        for stock in STOCK_LIST:
-            open_price = self.get_open_price(stock=stock, date=timestep)
-            order = getattr(action, stock)
+        obs = self.get_observations(timestep=self.t)
 
-            reward += order.sell * open_price
-            reward -= order.buy * open_price
+        return obs, reward, done, {}
 
-            _bought += order.buy * open_price
+    def reset(self) -> bool:
+        if self.start_point_list:
+            self.date = self.start_date + datetime.timedelta(
+                days=self.start_point_list.pop()
+            )
+            self.t = 0
+            return True
+        else:
+            # all start points used up
+            return False
 
-        assert _bought > 10_000_000, "Rule Violation"
-
-        return reward
-
-    def episode(
-        self,
-        agent: Agent,
-        start: datetime.date,
-        end: datetime.date,
-    ) -> Return:
-        t = start
-        while t <= end:
-            # 1. Agent: Observe environment
-            observation = agent.observe(env=self, timestep=t)
-
-            # 2. Agent: Struct a state from observation
-            state = agent.observation2state(observation=observation)
-
-            # 3. Agent: Derive an action w.r.t. structed state
-            action = agent.policy(state=state)
-
-            # 4. Env: Calculate reward
-            reward = self.interact(action=action, timestep=t)
-
-            # 5. Agent: Do actual sell & buy
-            for stock in STOCK_LIST:
-                open_price = self.get_open_price(stock=stock, date=t)
-                order = getattr(action, stock)
-
-                agent.sell(stock=stock, quantity=order.sell, price=open_price)
-                agent.buy(stock=stock, quantity=order.buy, price=open_price)
-
-            # 6. Agent: Receive reward
-            agent.rewarded(reward=reward)
-
-            # 7. Increase timestep
-            t += datetime.timedelta(days=1)
-
-        return agent.Return()
+    def seed(self, seed=None):
+        self.np_random, seed = seeding.np_random(seed)
+        return [seed]
