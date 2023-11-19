@@ -1,6 +1,6 @@
 import numpy as np
 
-from interface import ValueFunction
+from value_functions.interface import ValueFunction
 
 
 class LinearSarsa(ValueFunction):
@@ -15,11 +15,11 @@ class LinearSarsa(ValueFunction):
         self.alpha = learning_rate
         self.gamma = discount_factor
 
-    def predict(self, state: np.ndarray[float], action: np.ndarray[float]) -> float:
+    def predict(self, state: np.ndarray, action: np.ndarray) -> float:
         state_action_vector = np.concatenate((state, action))
         return np.dot(self.params, state_action_vector)
 
-    def argmax(self, state: np.ndarray[float]) -> np.ndarray[float]:
+    def argmax(self, state: np.ndarray) -> np.ndarray:
         action_params = self.params[len(state) :]
 
         argmax_action = np.zeros(len(action_params))
@@ -30,9 +30,9 @@ class LinearSarsa(ValueFunction):
     def loss_function(
         self,
         reward: float,
-        curr_state: np.ndarray[float],
-        curr_action: np.ndarray[float],
-        next_state: np.ndarray[float],
+        curr_state: np.ndarray,
+        curr_action: np.ndarray,
+        next_state: np.ndarray,
     ) -> float:
         actual = reward + self.predict(
             state=next_state, action=self.argmax(state=next_state)
@@ -44,9 +44,9 @@ class LinearSarsa(ValueFunction):
     def update(
         self,
         reward: float,
-        curr_state: np.ndarray[float],
-        curr_action: np.ndarray[float],
-        next_state: np.ndarray[float],
+        curr_state: np.ndarray,
+        curr_action: np.ndarray,
+        next_state: np.ndarray,
     ):
         loss = self.loss_function(
             reward=reward,

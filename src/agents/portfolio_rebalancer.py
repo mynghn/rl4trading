@@ -1,3 +1,4 @@
+import copy
 from collections import defaultdict
 
 import numpy as np
@@ -6,7 +7,7 @@ from envs.market import StockMarket
 from gym import spaces as S
 from value_functions.interface import ValueFunction
 
-from interface import Agent
+from agents.interface import Agent
 
 
 class PortfolioRebalancer(Agent):
@@ -20,7 +21,7 @@ class PortfolioRebalancer(Agent):
         self.epsilon = epsilon
         self.random_seed = self.seed()
 
-    def struct_state(self, observation: np.ndarray[float]) -> np.ndarray[float]:
+    def struct_state(self, observation: np.ndarray) -> np.ndarray:
         state = observation
 
         # portfolio value
@@ -45,10 +46,10 @@ class PortfolioRebalancer(Agent):
 
         return state
 
-    def argmax_q(self, state: np.ndarray[float]) -> np.ndarray[float]:
+    def argmax_q(self, state: np.ndarray) -> np.ndarray:
         return self.Q.argmax(state=state)
 
-    def act(self, state: np.ndarray[float]) -> np.ndarray[float]:
+    def act(self, state: np.ndarray) -> np.ndarray:
         # epsilon greedy
         if self.np_random.rand() < self.epsilon:
             # explore
@@ -57,6 +58,9 @@ class PortfolioRebalancer(Agent):
             # exploit
             action = self.argmax_q(state=state)
 
+        return action
+
+    def to_market_action(self, state: np.ndarray, action: np.ndarray) -> np.ndarray:
         # Translate into StockMarket action protocol
         inventory_value_book = {}
         price_book = {}
@@ -77,10 +81,27 @@ class PortfolioRebalancer(Agent):
                 # buy
                 to_buy = int((adjusted_value - holding_value) / price_book[stock])
                 stock_market_action.append(to_buy)
+
+                self.inventory[stock][price_book[stock]] += to_buy
             elif adjusted_value < holding_value:
                 # sell
                 to_sell = int((holding_value - adjusted_value) / price_book[stock])
                 stock_market_action.append(-to_sell)
+
+                to_deduct = to_sell
+                for p, q in sorted(
+                    copy.deepcopy(self.inventory[stock]).items(),
+                    key=lambda item: item[0],
+                ):
+                    if q > to_deduct:
+                        self.inventory[stock][p] -= to_deduct
+                        break
+                    elif q == to_deduct:
+                        del self.inventory[stock][p]
+                        break
+                    else:
+                        del self.inventory[stock][p]
+                        to_deduct -= q
             else:
                 stock_market_action.append(0)
 
